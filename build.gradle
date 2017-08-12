@@ -1,0 +1,194 @@
+buildscript {
+    repositories {
+        jcenter()
+    }
+    dependencies {
+        classpath 'com.jfrog.bintray.gradle:gradle-bintray-plugin:1.7.3'
+        classpath 'com.fsryan.gradle.autosemver:autosemver-git:0.1.0-alpha'
+    }
+}
+
+apply plugin: 'autosemver-git'
+apply plugin: 'groovy'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+apply plugin: 'com.jfrog.bintray'
+apply plugin: 'jacoco'
+
+group = 'com.fsryan.gradle.findbugsvariants'
+long buildTime = new Date().getTime()
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    compile gradleApi()
+    compile localGroovy()
+
+//    testCompile gradleTestKit()
+//    testCompile 'junit:junit:4.12'
+//    testCompile('org.spockframework:spock-core:1.1-groovy-2.4') {
+//        exclude module: 'groovy-all'    // <-- localGroovy() above with gradle 2.14.1 uses groovy 2.4.5, but spock specifies 2.4.9
+//    }
+}
+
+jacoco {
+    toolVersion = "0.7.6.+"
+}
+
+task jacocoReport(type: JacocoReport, dependsOn: 'test') {
+    group = 'Reporting'
+    description = 'Generate Jacoco coverage reports after running tests.'
+
+    executionData = files('build/jacoco/test.exec')
+    sourceDirectories = files('src/main/groovy')
+    classDirectories = fileTree(
+            dir: 'build/classes',
+            excludes: [
+                    '**/*Test.class'
+            ]
+    )
+
+    reports {
+        xml.enabled true
+        csv.enabled false
+        html.enabled = true
+    }
+}
+
+//task javadocJar(type: Jar, dependsOn: Javadoc) {
+//    classifier = 'javadoc'
+//    from Javadoc.destinationDir
+//}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+//    archives javadocJar
+    archives sourcesJar
+}
+
+bintray {
+    user = hasProperty('bintrayUser') ? getProperty('bintrayUser') : ''
+    key = hasProperty('bintrayApiKey') ? getProperty('bintrayApiKey') : ''
+
+    configurations = ['archives']
+    pkg {
+        repo = 'maven'
+        name = project.name
+        desc = 'A gradle plugin providing findbugs tasks for all variants'
+        websiteUrl = 'https://github.com/ryansgot/findbugs-variants'
+        vcsUrl = 'https://github.com/ryansgot/findbugs-variants.git'
+        licenses = ["MIT"]
+        publish = false
+        publicDownloadNumbers = true
+        version {
+            name = project.version
+            desc = 'A gradle plugin providing findbugs tasks for all variants'
+            released  = new Date()
+            vcsTag = "v${project.version}"
+        }
+    }
+}
+
+publishing {
+    publications {
+        mavenGroovy(MavenPublication) {
+            groupId = project.group
+            artifactId = project.name
+            version = project.version
+            from components.java
+        }
+        bintray(MavenPublication) {
+            groupId = rootProject.group
+            artifactId = project.name
+            version = project.version
+            from components.java
+        }
+        mavenS3(MavenPublication) {
+            groupId = rootProject.group
+            artifactId = project.name
+            version = project.version
+            from components.java
+            pom.withXml {
+                asNode().appendNode('build')
+                        .appendNode('extensions')
+                        .appendNode('extension')
+                        .appendNode('groupId', 'org.kuali.maven.wagons').parent()
+                        .appendNode('artifactId', 'maven-s3-wagon').parent()
+                        .appendNode('version', '1.2.1')
+            }
+        }
+    }
+    repositories {
+        maven {
+            name 'release'
+            url "s3://repo.fsryan.com/release"
+            credentials(AwsCredentials) {
+                accessKey = project.hasProperty("awsMavenAccessKey") ? project.property("awsMavenAccessKey") : ""
+                secretKey = project.hasProperty("awsMavenSecretKey") ? project.property("awsMavenSecretKey") : ""
+            }
+        }
+        maven {
+            name 'snapshot'
+            url "s3://repo.fsryan.com/snapshot"
+            credentials(AwsCredentials) {
+                accessKey = project.hasProperty("awsMavenAccessKey") ? project.property("awsMavenAccessKey") : ""
+                secretKey = project.hasProperty("awsMavenSecretKey") ? project.property("awsMavenSecretKey") : ""
+            }
+        }
+    }
+}
+
+model {
+    tasks.generatePomFileForBintrayPublication {
+        doFirst {
+            file("$buildDir/poms").mkdirs()
+        }
+        destination = file("$buildDir/poms/pom-default.xml")
+    }
+}
+
+afterEvaluate {
+//    tasks.findByName('publishModule').dependsOn('test')
+    tasks.findByName('bintrayUpload').dependsOn('generatePomFileForBintrayPublication')
+}
+
+autosemver {
+    branchConfigs {
+        integration {
+            skipCiCommitMessageSuffix = '[skip ci]'
+            pullRemote = 'origin'
+            pushRemote = 'origin'
+            versionIncrement = "patch"
+            preRelease = 'test'
+            metaData = Long.toString(buildTime)
+        }
+        alpha { // <-- for new features
+            skipCiCommitMessageSuffix = '[skip ci]'
+            pullRemote = 'origin'
+            pushRemote = 'origin'
+            versionIncrement = "minor"
+            preRelease = 'alpha'
+        }
+        beta { // <-- for bug fixes
+            skipCiCommitMessageSuffix = '[skip ci]'
+            pullRemote = 'origin'
+            pushRemote = 'origin'
+            preRelease = 'beta'
+        }
+        master {    // <-- stable version
+            skipCiCommitMessageSuffix = '[skip ci]'
+            pullRemote = 'origin'
+            pushRemote = 'origin'
+        }
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '3.3'
+}
