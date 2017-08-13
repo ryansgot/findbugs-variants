@@ -53,7 +53,7 @@ class FindbugsVariantsPlugin implements Plugin<Project> {
 
                 final File stylesheetFile = project.file("${project.projectDir}${File.separator}findbugs${File.separator}stylesheet.xsl")
                 if (stylesheetFile.exists()) {
-                    task.html.stylesheet = project.resources.text.fromFile(stylesheetFile)
+                    task.reports.html.stylesheet = project.resources.text.fromFile(stylesheetFile)
                 }
 
                 def variantCompile = variant.javaCompile
