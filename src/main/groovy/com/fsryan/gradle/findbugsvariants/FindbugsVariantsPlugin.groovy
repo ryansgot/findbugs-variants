@@ -41,8 +41,6 @@ class FindbugsVariantsPlugin implements Plugin<Project> {
                     println "$includeFilterFile does not exist--not using findbugs include filter for ${variant.name}"
                 }
 
-                println "task properties: ${task.properties}"
-
                 task.reports {
                     xml {
                         enabled = false
@@ -51,6 +49,11 @@ class FindbugsVariantsPlugin implements Plugin<Project> {
                     html {
                         enabled = true
                     }
+                }
+
+                final File stylesheetFile = project.file("${project.projectDir}${File.separator}findbugs${File.separator}stylesheet.xsl")
+                if (stylesheetFile.exists()) {
+                    task.html.stylesheet = project.resources.text.fromFile(stylesheetFile)
                 }
 
                 def variantCompile = variant.javaCompile
